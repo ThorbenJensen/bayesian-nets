@@ -3,3 +3,4 @@
 .RData
 .Ruserdata
 bayesian-tools.Rproj
+*.Rproj
