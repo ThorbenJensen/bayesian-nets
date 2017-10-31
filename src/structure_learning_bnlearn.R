@@ -3,6 +3,7 @@
 library(bnlearn)
 library(titanic)
 library(arules)
+library(dplyr)
 
 df <- titanic::titanic_train
 
