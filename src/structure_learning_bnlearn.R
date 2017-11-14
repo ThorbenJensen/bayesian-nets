@@ -62,16 +62,49 @@ df2 <-
   mutate(Age = as.factor(Age))
   
 # learn structure
-res2 <-
+df3 <-
   df2 %>%
-  filter(complete.cases(.)) %>%
-  hc(., blacklist = bl2, score = "aic")
+  filter(complete.cases(.))
+
+res2 <-
+  hc(df3, blacklist = bl2, score = "aic")
 
 plot(res2)
 
+# fit weights
+fitted <- bn.fit(x = res2, data = df3)
 
-data(gaussian.test) %>%
-  discretize(gaussian.test, method = 'hartemink', breaks = 4, ibreaks = 20)
 
-  
-  
+# idea: for each feature, measure increased certainty due to evidence, 
+#       weighted by unconditional probability of evidence
+
+# query and test entropy reduction for different evidence
+prob <- cpquery(fitted, event = (Survived == 1), evidence = TRUE) 
+certainty_baseline <- abs(prob - .5) * 2
+
+# 'gain of certainty' from sex
+if_male <- cpquery(fitted, event = (Survived == 1), evidence = (Sex == 'male'))
+if_female <- cpquery(fitted, event = (Survived == 1), evidence = (Sex == 'female'))
+prob_male <- cpquery(fitted, event = (Sex == 'male'), evidence = TRUE)
+prob_female <- cpquery(fitted, event = (Sex == 'female'), evidence = TRUE)
+
+certainty_sex <- 
+  (prob_male * abs(if_male - .5) + prob_female * abs(if_female - .5)) * 2
+
+# 'certainty' with evidence Pclass
+prob_1 <- cpquery(fitted, event = (Pclass == '1'), evidence = TRUE)
+if_1 <- cpquery(fitted, event = (Survived == 1), evidence = (Pclass == '1'))
+prob_2 <- cpquery(fitted, event = (Pclass == '2'), evidence = TRUE)
+if_2 <- cpquery(fitted, event = (Survived == 1), evidence = (Pclass == '2'))
+prob_3 <- cpquery(fitted, event = (Pclass == '3'), evidence = TRUE)
+if_3 <- cpquery(fitted, event = (Survived == 1), evidence = (Pclass == '3'))
+
+certainty_class <-
+  (prob_1 * abs(if_1 - .5) + prob_2 * abs(if_2 - .5) + prob_3 * abs(if_3 - .5)) * 2
+
+
+# check if this 'information gain' measurement makes sense. if yes, scale up.
+# TODO
+
+
+
