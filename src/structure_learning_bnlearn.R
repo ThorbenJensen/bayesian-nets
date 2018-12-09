@@ -7,27 +7,6 @@ library(dplyr)
 
 df <- titanic::titanic_train
 
-# learn network for categorical variables ----
-bl = matrix(c("Survived", "Sex",
-              "Pclass", "Sex",
-              "SibSp", "Sex",
-              "Survived", "Pclass",
-              "Survived", "Embarked"),
-            ncol = 2,
-            byrow = T)
-
-res <-
-  df %>% 
-  select(Survived, Pclass, Sex, Embarked, SibSp) %>%
-  mutate(Survived = as.factor(Survived)) %>%
-  mutate(Pclass = as.factor(Pclass)) %>%
-  mutate(Sex = as.factor(Sex)) %>%
-  mutate(Embarked = as.factor(Embarked)) %>%
-  mutate(SibSp = as.factor(SibSp)) %>%
-  hc(., blacklist = bl, restart = 100, perturb = 100, score = "aic")
-
-plot(res)
-
 # mixed variable network ----
 bl2 = matrix(c("Survived", "Sex",
                "Survived", "Age",
@@ -41,7 +20,7 @@ bl2 = matrix(c("Survived", "Sex",
 
 # discretize continuous data
 df2 <-
-  df %>%   
+  df %>%
   select(Survived, Pclass, Sex, Embarked, SibSp, Age) %>%
   filter(complete.cases(.)) %>%
   mutate(Survived = as.factor(Survived)) %>%
@@ -54,12 +33,8 @@ mastercuts <-
   arules::discretize(df$Age, method = "interval", 
                      breaks = 3, onlycuts = T)
 df2$Age <- 
-  as.numeric(cut(x = df2$Age, breaks = mastercuts))
+  as.factor(cut(x = df2$Age, breaks = mastercuts))
 
-df2 <-
-  df2 %>%
-  mutate(Age = as.factor(Age))
-  
 # learn structure
 df3 <-
   df2 %>%
@@ -75,7 +50,7 @@ plot(res2)
 fitted <- bn.fit(x = res2, data = df3)
 
 
-# idea: for each feature, measure increased certainty due to evidence, 
+# idea: for each feature, measure increased certainty due to evidence,
 #       weighted by unconditional probability of evidence
 
 entropy <- function(p) {
@@ -108,5 +83,118 @@ if_3 <- cpquery(fitted, event = (Survived == 1), evidence = (Pclass == '3'))
 entropy_sex <-
   p_1 * entropy(if_1) + p_2 * entropy(if_2) + p_2 * entropy(if_2)
 
-# generalize this 'information gain' approach
+# scale up this greedy, adaptive sampling
 # TODO
+
+
+
+# calculate surival probability for current evidence
+survival_probability <- function(fit, evi) {
+  if (length(evi) == 0) { evi <- TRUE}
+
+  cpquery(fit,
+          event = (Survived == '1'),
+          evidence = evi,
+          method = 'lw')
+}
+
+# calculate survival probability, given hypotetical additional evidence
+survival_probability_hypothetical <- function(fitted,
+                                              evidence_pre,
+                                              feature,
+                                              feature_value) {
+  evidence_post <- evidence_pre
+  evidence_post[[feature]] <- feature_value
+  evidence_post
+
+  survival_probability(fitted, evidence_post)
+}
+
+# calculate independent probabilty for feature_Value
+# OPTIONAL: make probability dependent on given evidence
+prob_feature_value <- function(fitted, feature, feature_value) {
+  event_str <- paste0("(", feature, " == '", feature_value, "')")
+  cmd <- paste0("cpquery(fitted, ", event_str, ", evidence = TRUE)")
+  eval(parse(text = cmd))
+}
+
+# convert probability to certainty (i.e. abolute distance from p=0.5)
+prob_to_certainty <- function(probability) {
+  abs(probability - 0.5)
+}
+
+certainty_after_feature <- function(fitted, evidence_pre, df3, feature) {
+
+  feature_values <- unique(df3[,feature])
+  feature_values <- setdiff(feature_values, "")
+
+  # query target properties for each feature value
+  feature_probs <-
+    sapply(feature_values,
+           survival_probability_hypothetical,
+           fitted = fitted,
+           evidence_pre = evidence_pre,
+           feature = feature)
+
+  # convert target properties to 'certainties'
+  feature_certainties <- sapply(feature_probs, entropy)
+
+  # query indepentent probabilities for each target value to occur
+  prob_feature_values <-
+    sapply(feature_values,
+         prob_feature_value,
+         fitted = fitted,
+         feature = feature)
+
+  # average certainty for additional feature, weighted by feature value priors
+  (prob_feature_values %*% feature_certainties)[1,1]
+}
+
+
+# start without evidence
+evidence_pre <- list()
+entropy(survival_probability(fit = fitted, evi = evidence_pre))
+
+
+# calculate certainty after hypothetically adding the next feature
+target <- "Survived"
+features <- setdiff(colnames(df3), target)
+entropy_after_features <-
+  sapply(features,
+         certainty_after_feature,
+         fitted = fitted,
+         evidence_pre = evidence_pre,
+         df3 = df3)
+
+print(entropy_after_features)
+
+# assume that most informative feature (e.g. Sex) is already known
+evidence_2 <- evidence_pre
+evidence_2[['Sex']] <- 'male'
+entropy(survival_probability(fit = fitted, evi = evidence_2))
+
+features_2 <- setdiff(features, "Sex")
+entropy_after_features_2 <-
+  sapply(features_2,
+         certainty_after_feature,
+         fitted = fitted,
+         evidence_pre = evidence_2,
+         df3 = df3)
+
+print(entropy_after_features_2)
+
+# assume that 'SibSp' is known, too
+evidence_3 <- evidence_pre
+evidence_3[['SibSp']] <- '1'
+survival_probability(fit = fitted, evi = evidence_3)
+prob_to_certainty(survival_probability(fit = fitted, evi = evidence_3))
+
+features_2 <- setdiff(features, "SibSp")
+entropy_after_features_2 <-
+  sapply(features_2,
+         certainty_after_feature,
+         fitted = fitted,
+         evidence_pre = evidence_2,
+         df3 = df3)
+
+print(entropy_after_features_2)
