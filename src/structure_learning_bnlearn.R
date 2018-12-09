@@ -83,10 +83,6 @@ if_3 <- cpquery(fitted, event = (Survived == 1), evidence = (Pclass == '3'))
 entropy_sex <-
   p_1 * entropy(if_1) + p_2 * entropy(if_2) + p_2 * entropy(if_2)
 
-# scale up this greedy, adaptive sampling
-# TODO
-
-
 
 # calculate surival probability for current evidence
 survival_probability <- function(fit, evi) {
