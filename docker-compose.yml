@@ -1,0 +1,11 @@
+version: '2'
+services:
+
+    rstudio:
+      image: rocker/tidyverse:latest
+      environment:
+        - PASSWORD=pw
+      volumes:
+        - .:/home/rstudio/project
+      ports:
+        - "8787:8787"
